@@ -3,10 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { mockNotices } from "../data/mockNotices";
 import { getProfile } from "../lib/storage";
 import { isRelevant, matchReason } from "../lib/relevance";
 import { analyzeNotice, getCachedAnalysis } from "../lib/analysisCache";
+import { useNotices } from "../lib/useNotices";
 import { CATEGORY_COLORS, dDayLabel, formatFullDateKorean } from "../lib/date";
 import type { ExtractedInfo, Notice, UserProfile } from "../lib/types";
 
@@ -21,6 +21,7 @@ export default function NoticesPage() {
   const router = useRouter();
   const [profile, setProfile] = useState<UserProfile | null | undefined>(undefined);
   const [analysis, setAnalysis] = useState<Record<string, AnalysisState>>({});
+  const { notices, loading: noticesLoading, error: noticesError } = useNotices();
 
   useEffect(() => {
     const p = getProfile();
@@ -33,8 +34,8 @@ export default function NoticesPage() {
 
   const relevantNotices = useMemo(() => {
     if (!profile) return [] as Notice[];
-    return mockNotices.filter((n) => isRelevant(n, profile));
-  }, [profile]);
+    return notices.filter((n) => isRelevant(n, profile));
+  }, [profile, notices]);
 
   useEffect(() => {
     relevantNotices.forEach((notice) => {
@@ -64,7 +65,7 @@ export default function NoticesPage() {
     });
   }, [relevantNotices, analysis]);
 
-  if (profile === undefined) {
+  if (profile === undefined || noticesLoading) {
     return (
       <main style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
         <p style={{ color: "#6b7280" }}>불러오는 중...</p>
@@ -72,6 +73,13 @@ export default function NoticesPage() {
     );
   }
   if (!profile) return null;
+  if (noticesError) {
+    return (
+      <main style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <p style={{ color: "#dc2626" }}>{noticesError}</p>
+      </main>
+    );
+  }
 
   return (
     <main style={{ display: "flex", flexDirection: "column" }}>

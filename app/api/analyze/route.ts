@@ -65,6 +65,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const client = new Anthropic();
+    const today = new Date().toISOString().slice(0, 10);
     const response = await client.messages.create({
       model: MODEL,
       max_tokens: 1024,
@@ -79,7 +80,7 @@ export async function POST(request: NextRequest) {
           role: "user",
           content:
             "다음은 대학교 공지사항 본문이다. 신청 마감, 발표일, 활동 시작 등 본문에 등장하는 모든 개별 일정을 추출하라. " +
-            "오늘 날짜는 2026-08-11이다. 날짜는 반드시 YYYY-MM-DD 형식으로, 시간은 본문에 있으면 HH:mm로 반환하고 " +
+            `오늘 날짜는 ${today}이다. 날짜는 반드시 YYYY-MM-DD 형식으로, 시간은 본문에 있으면 HH:mm로 반환하고 ` +
             "본문에 명시되지 않은 값은 null로 반환하라. 일정이 여러 개면 발생 순서대로 배열에 담아라.\n\n" +
             `제목: ${title}\n본문: ${rawText}`,
         },

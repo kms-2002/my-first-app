@@ -1,7 +1,9 @@
 import type { CalendarEvent, NotificationSettings, UserProfile } from "./types";
 
 const PROFILE_KEY = "notice-calendar:profile";
-const EVENTS_KEY = "notice-calendar:events";
+// 목업 공지(n1~n9) 시절에 저장된 캘린더 일정은 이제 존재하지 않는 noticeId를 가리키므로,
+// 키를 새로 버전업해서 그 데이터를 그냥 무시한다 (analysisCache.ts의 -v2 패턴과 동일).
+const EVENTS_KEY = "notice-calendar:events-v2";
 const NOTIFICATIONS_KEY = "notice-calendar:notifications";
 
 const DEFAULT_NOTIFICATIONS: NotificationSettings = { deadlineAlerts: true };

@@ -3,16 +3,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { mockNotices } from "../../data/mockNotices";
 import { addEvents, getEventsByNotice } from "../../lib/storage";
 import { analyzeNotice, getCachedAnalysis } from "../../lib/analysisCache";
+import { useNotices } from "../../lib/useNotices";
 import { CATEGORY_COLORS, formatFullDateKorean } from "../../lib/date";
 import type { CalendarEvent, ExtractedInfo } from "../../lib/types";
 
 export default function NoticeDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
-  const notice = mockNotices.find((n) => n.id === params.id);
+  const { notices, loading: noticesLoading, error: noticesError } = useNotices();
+  const notice = notices.find((n) => n.id === params.id);
 
   const [extracted, setExtracted] = useState<ExtractedInfo | null>(notice ? getCachedAnalysis(notice.id) : null);
   const [loading, setLoading] = useState(!extracted);
@@ -41,6 +42,25 @@ export default function NoticeDetailPage() {
   useEffect(() => {
     if (extracted) setChecked(new Set(extracted.scheduleItems.map((_, i) => i)));
   }, [extracted]);
+
+  if (noticesLoading) {
+    return (
+      <main style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <p style={{ color: "#6b7280" }}>불러오는 중...</p>
+      </main>
+    );
+  }
+
+  if (noticesError) {
+    return (
+      <main style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "12px" }}>
+        <p style={{ color: "#dc2626" }}>{noticesError}</p>
+        <Link href="/notices" style={{ fontSize: "13px", color: "#2563eb", textDecoration: "underline" }}>
+          공지 목록으로
+        </Link>
+      </main>
+    );
+  }
 
   if (!notice) {
     return (

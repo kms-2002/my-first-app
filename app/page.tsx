@@ -3,19 +3,20 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { mockNotices } from "./data/mockNotices";
 import { getEvents, getProfile } from "./lib/storage";
+import { useNotices } from "./lib/useNotices";
 import { CATEGORY_COLORS, TODAY, dDayLabel, daysUntil } from "./lib/date";
 import type { CalendarEvent, UserProfile } from "./lib/types";
-
-function noticeCategory(noticeId: string) {
-  return mockNotices.find((n) => n.id === noticeId)?.category;
-}
 
 export default function Home() {
   const router = useRouter();
   const [profile, setProfile] = useState<UserProfile | null | undefined>(undefined);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const { notices } = useNotices();
+
+  function noticeCategory(noticeId: string) {
+    return notices.find((n) => n.id === noticeId)?.category;
+  }
 
   useEffect(() => {
     const p = getProfile();

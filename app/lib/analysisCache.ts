@@ -1,11 +1,12 @@
-import { mockAnalysisByNoticeId } from "../data/mockAnalysis";
+import { extractScheduleFromText } from "./scheduleExtractor";
 import type { ExtractedInfo, Notice } from "./types";
 
 const CACHE_KEY = "notice-calendar:analysis-cache-v2";
 
-// ANTHROPIC_API_KEY를 발급받기 전까지는 목업 분석 데이터를 사용한다.
-// 키가 준비되면 이 값을 false로 바꾸면 실제 app/api/analyze(Claude API)를 호출한다.
-const USE_MOCK_AI = true;
+// API 키 없이 무료로 쓸 수 있도록 기본은 규칙 기반(정규식) 추출기를 사용한다.
+// ANTHROPIC_API_KEY를 발급받아 더 정확한 분석이 필요해지면 이 값을 "ai"로 바꾸면
+// 실제 app/api/analyze(Claude API)를 호출한다.
+const ANALYSIS_MODE: "rule" | "ai" = "rule";
 
 function readCache(): Record<string, ExtractedInfo> {
   if (typeof window === "undefined") return {};
@@ -29,13 +30,10 @@ export async function analyzeNotice(notice: Pick<Notice, "id" | "title" | "rawTe
   const cached = getCachedAnalysis(notice.id);
   if (cached) return cached;
 
-  if (USE_MOCK_AI) {
-    const mock = mockAnalysisByNoticeId[notice.id];
-    if (!mock) throw new Error("이 공지의 목업 분석 데이터가 없습니다.");
-    // 실제 API 호출과 비슷한 로딩 체감을 위해 짧은 지연을 흉내낸다.
-    await new Promise((resolve) => setTimeout(resolve, 350));
-    writeCache({ ...readCache(), [notice.id]: mock });
-    return mock;
+  if (ANALYSIS_MODE === "rule") {
+    const extracted = extractScheduleFromText(notice.title, notice.rawText);
+    writeCache({ ...readCache(), [notice.id]: extracted });
+    return extracted;
   }
 
   const res = await fetch("/api/analyze", {

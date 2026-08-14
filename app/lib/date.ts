@@ -1,7 +1,7 @@
 import type { Category } from "./types";
 
-// 데모 기준 "오늘" — 목업 공지 데이터의 날짜들과 맞춰둔 고정값
-export const TODAY = "2026-08-11";
+// 실제 공지의 D-day를 계산해야 하므로 고정값이 아닌 실제 오늘 날짜를 사용한다.
+export const TODAY = new Date().toISOString().slice(0, 10);
 
 export function daysUntil(dateStr: string, today: string = TODAY): number {
   const a = new Date(today + "T00:00:00");
