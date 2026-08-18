@@ -2,6 +2,7 @@ import * as cheerio from "cheerio";
 import type { Category, Notice } from "../types";
 import { guessCategory } from "../categoryHeuristic";
 import { politeFetch, sleep, REQUEST_DELAY_MS } from "./politeFetch";
+import { scrapeNerumPrograms } from "./nerumSource";
 
 // 경상국립대 공지사항 게시판들. robots.txt에서 차단되지 않은 게시판만 등록한다 (politeFetch.ts 참고).
 const BASE_URL = "https://www.gnu.ac.kr";
@@ -124,8 +125,12 @@ async function fetchNoticeDetail(board: BoardConfig, nttSn: string): Promise<str
 // (건마다 순차 대기하면 콜드 스크래핑 시 Vercel 함수 제한 시간을 넘기기 쉽다).
 async function scrapeBoard(board: BoardConfig, knownIds: Set<string>): Promise<Notice[]> {
   const rows = await fetchNoticeList(board);
+  // 카테고리를 확정 짓지 못하는(= guessCategory가 null을 반환하는) 글은 상세조회 대상에서 아예 제외한다.
+  // "비교과"는 학생역량관리시스템에서 별도로 가져오므로, 여기서 애매한 글을 비교과로 폴백시키지 않는다.
   const targets = rows
     .filter((row) => !knownIds.has(`gnu-${row.nttSn}`))
+    .map((row) => ({ row, category: board.fixedCategory ?? guessCategory(row.title) }))
+    .filter((t): t is { row: ListRow; category: Category } => t.category !== null)
     .slice(0, MAX_DETAIL_FETCHES_PER_BOARD);
 
   const notices: Notice[] = [];
@@ -133,10 +138,10 @@ async function scrapeBoard(board: BoardConfig, knownIds: Set<string>): Promise<N
     if (i > 0) await sleep(REQUEST_DELAY_MS);
     const batch = targets.slice(i, i + DETAIL_FETCH_CONCURRENCY);
     const batchResults = await Promise.allSettled(
-      batch.map(async (row) => ({
+      batch.map(async ({ row, category }) => ({
         id: `gnu-${row.nttSn}`,
         title: row.title,
-        category: board.fixedCategory ?? guessCategory(row.title),
+        category,
         department: row.department,
         sourceUrl: detailUrl(board, row.nttSn),
         publishedDate: row.publishedDate,
@@ -157,10 +162,13 @@ async function scrapeBoard(board: BoardConfig, knownIds: Set<string>): Promise<N
 }
 
 export async function scrapeRecentNotices(knownIds: Set<string>): Promise<Notice[]> {
-  const results = await Promise.allSettled(BOARDS.map((board) => scrapeBoard(board, knownIds)));
+  const results = await Promise.allSettled([
+    ...BOARDS.map((board) => scrapeBoard(board, knownIds)),
+    scrapeNerumPrograms(knownIds), // 비교과는 학생역량관리시스템에서만 가져온다.
+  ]);
   return results.flatMap((result) => {
     if (result.status === "fulfilled") return result.value;
-    console.error("게시판 스크래핑 실패, 건너뜀:", result.reason);
+    console.error("게시판/비교과 스크래핑 실패, 건너뜀:", result.reason);
     return [];
   });
 }
