@@ -31,7 +31,8 @@ export interface ExtractedInfo {
 export interface UserProfile {
   department: string;
   grade: string;
-  interests: Category[];
+  interestTags: string[]; // 관심 분야 (AI, 개발, 디자인 등) — 개인화용 태그
+  interests: Category[]; // 관심 공지 유형 — 공지 필터링에 직접 사용
 }
 
 // 사용자가 "캘린더에 추가"를 눌러 확정한 일정만 저장

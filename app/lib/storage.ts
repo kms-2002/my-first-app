@@ -32,6 +32,11 @@ export function saveProfile(profile: UserProfile) {
   writeJSON(PROFILE_KEY, profile);
 }
 
+export function clearProfile() {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(PROFILE_KEY);
+}
+
 export function getEvents(): CalendarEvent[] {
   return readJSON<CalendarEvent[]>(EVENTS_KEY) ?? [];
 }

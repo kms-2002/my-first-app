@@ -257,7 +257,7 @@ export default function NoticeDetailPage() {
               padding: "13px",
               borderRadius: "10px",
               border: "none",
-              background: selectedNewCount === 0 ? "#d1d5db" : "#2563eb",
+              background: selectedNewCount === 0 ? "#d1d5db" : "#111827",
               color: "#ffffff",
               fontSize: "14px",
               fontWeight: 700,

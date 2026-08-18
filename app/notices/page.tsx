@@ -8,9 +8,12 @@ import { isRelevant, matchReason } from "../lib/relevance";
 import { analyzeNotice, getCachedAnalysis } from "../lib/analysisCache";
 import { useNotices } from "../lib/useNotices";
 import { CATEGORY_COLORS, dDayLabel, formatFullDateKorean } from "../lib/date";
-import type { ExtractedInfo, Notice, UserProfile } from "../lib/types";
+import type { Category, ExtractedInfo, Notice, UserProfile } from "../lib/types";
 
 type AnalysisState = { extracted?: ExtractedInfo; loading: boolean; error?: string };
+type CategoryFilter = "전체" | Category;
+
+const CATEGORIES: Category[] = ["장학", "취업", "비교과", "공모전", "대외활동"];
 
 function earliestItem(extracted: ExtractedInfo) {
   if (extracted.scheduleItems.length === 0) return null;
@@ -21,12 +24,13 @@ export default function NoticesPage() {
   const router = useRouter();
   const [profile, setProfile] = useState<UserProfile | null | undefined>(undefined);
   const [analysis, setAnalysis] = useState<Record<string, AnalysisState>>({});
+  const [selectedCategory, setSelectedCategory] = useState<CategoryFilter>("전체");
   const { notices, loading: noticesLoading, error: noticesError } = useNotices();
 
   useEffect(() => {
     const p = getProfile();
     if (!p) {
-      router.push("/onboarding");
+      router.push("/");
       return;
     }
     setProfile(p);
@@ -37,8 +41,14 @@ export default function NoticesPage() {
     return notices.filter((n) => isRelevant(n, profile));
   }, [profile, notices]);
 
+  // "전체"는 관심분야 기반 맞춤 목록을, 특정 카테고리는 관심분야와 무관하게 해당 카테고리 전체를 보여준다.
+  const displayedNotices = useMemo(() => {
+    if (selectedCategory === "전체") return relevantNotices;
+    return notices.filter((n) => n.category === selectedCategory);
+  }, [selectedCategory, relevantNotices, notices]);
+
   useEffect(() => {
-    relevantNotices.forEach((notice) => {
+    displayedNotices.forEach((notice) => {
       const cached = getCachedAnalysis(notice.id);
       if (cached) {
         setAnalysis((prev) => ({ ...prev, [notice.id]: { extracted: cached, loading: false } }));
@@ -52,10 +62,10 @@ export default function NoticesPage() {
         );
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [relevantNotices]);
+  }, [displayedNotices]);
 
   const sortedNotices = useMemo(() => {
-    return [...relevantNotices].sort((a, b) => {
+    return [...displayedNotices].sort((a, b) => {
       const ea = analysis[a.id]?.extracted ? earliestItem(analysis[a.id].extracted!) : null;
       const eb = analysis[b.id]?.extracted ? earliestItem(analysis[b.id].extracted!) : null;
       if (ea && eb) return ea.date.localeCompare(eb.date);
@@ -63,7 +73,7 @@ export default function NoticesPage() {
       if (eb) return 1;
       return 0;
     });
-  }, [relevantNotices, analysis]);
+  }, [displayedNotices, analysis]);
 
   if (profile === undefined || noticesLoading) {
     return (
@@ -93,10 +103,37 @@ export default function NoticesPage() {
         <h1 style={{ fontSize: "17px", fontWeight: 800, color: "#111827" }}>맞춤 공지</h1>
       </header>
 
-      <div style={{ padding: "16px 20px 24px", display: "flex", flexDirection: "column", gap: "12px" }}>
+      <div style={{ display: "flex", gap: "8px", padding: "14px 20px 4px", overflowX: "auto" }}>
+        {(["전체", ...CATEGORIES] as CategoryFilter[]).map((cat) => {
+          const active = selectedCategory === cat;
+          const colors = cat === "전체" ? null : CATEGORY_COLORS[cat];
+          return (
+            <button
+              key={cat}
+              onClick={() => setSelectedCategory(cat)}
+              style={{
+                flexShrink: 0,
+                padding: "8px 16px",
+                borderRadius: "999px",
+                border: active ? "none" : "1px solid #e5e7eb",
+                background: active ? (colors ? colors.bg : "#111827") : "#ffffff",
+                color: active ? (colors ? colors.text : "#ffffff") : "#6b7280",
+                fontSize: "13px",
+                fontWeight: 700,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {cat}
+            </button>
+          );
+        })}
+      </div>
+
+      <div style={{ padding: "12px 20px 24px", display: "flex", flexDirection: "column", gap: "12px" }}>
         {sortedNotices.length === 0 && (
           <p style={{ fontSize: "13px", color: "#9ca3af", textAlign: "center", marginTop: "40px" }}>
-            관심 분야에 맞는 공지가 아직 없어요.
+            {selectedCategory === "전체" ? "관심 분야에 맞는 공지가 아직 없어요." : `${selectedCategory} 공지가 아직 없어요.`}
           </p>
         )}
 

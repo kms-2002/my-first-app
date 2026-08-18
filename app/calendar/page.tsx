@@ -3,8 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { getEvents } from "../lib/storage";
-import { TODAY, dDayLabel, daysUntil, formatMonthDayKorean } from "../lib/date";
+import { useNotices } from "../lib/useNotices";
+import { TODAY, CATEGORY_COLORS } from "../lib/date";
 import type { CalendarEvent } from "../lib/types";
+
+const WEEKDAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
+const NEUTRAL_COLOR = { bg: "#f3f4f6", text: "#6b7280" };
 
 function daysInMonth(year: number, month: number) {
   return new Date(year, month, 0).getDate();
@@ -18,12 +22,18 @@ function dateKey(year: number, month: number, day: number) {
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
-const [TODAY_YEAR, TODAY_MONTH] = TODAY.split("-").map(Number);
+function weekdayOf(dateStr: string) {
+  return WEEKDAY_LABELS[new Date(dateStr + "T00:00:00").getDay()];
+}
+
+const [TODAY_YEAR, TODAY_MONTH, TODAY_DAY] = TODAY.split("-").map(Number);
 
 export default function CalendarPage() {
   const [events, setEvents] = useState<CalendarEvent[] | null>(null);
   const [year, setYear] = useState(TODAY_YEAR);
   const [month, setMonth] = useState(TODAY_MONTH);
+  const [selectedDay, setSelectedDay] = useState(TODAY_DAY);
+  const { notices } = useNotices();
 
   useEffect(() => {
     setEvents(getEvents());
@@ -36,24 +46,10 @@ export default function CalendarPage() {
     }, {});
   }, [events]);
 
-  const summaryBanner = useMemo(() => {
-    const all = events ?? [];
-    const todays = all.filter((e) => e.date === TODAY);
-    if (todays.length > 0) {
-      const extra = todays.length > 1 ? ` 외 ${todays.length - 1}건` : "";
-      return { tone: "today" as const, text: `오늘 일정 · ${todays[0].title}${extra}` };
-    }
-    const upcomingDeadline = all
-      .filter((e) => e.type === "deadline" && daysUntil(e.date) >= 0)
-      .sort((a, b) => a.date.localeCompare(b.date))[0];
-    if (upcomingDeadline) {
-      return {
-        tone: "deadline" as const,
-        text: `마감 임박 · ${upcomingDeadline.title} (${dDayLabel(upcomingDeadline.date)})`,
-      };
-    }
-    return null;
-  }, [events]);
+  function colorFor(noticeId: string) {
+    const category = notices.find((n) => n.id === noticeId)?.category;
+    return category ? CATEGORY_COLORS[category] : NEUTRAL_COLOR;
+  }
 
   function goToMonth(delta: number) {
     let m = month + delta;
@@ -67,6 +63,7 @@ export default function CalendarPage() {
     }
     setMonth(m);
     setYear(y);
+    setSelectedDay((prev) => Math.min(prev, daysInMonth(y, m)));
   }
 
   if (events === null) {
@@ -109,7 +106,7 @@ export default function CalendarPage() {
             style={{
               padding: "12px 20px",
               borderRadius: "10px",
-              background: "#2563eb",
+              background: "#111827",
               color: "#ffffff",
               fontSize: "13.5px",
               fontWeight: 700,
@@ -130,9 +127,8 @@ export default function CalendarPage() {
     ...Array.from({ length: total }, (_, i) => i + 1),
   ];
 
-  const agenda = Object.entries(eventsByDate)
-    .filter(([date]) => date.startsWith(`${year}-${String(month).padStart(2, "0")}`))
-    .sort(([a], [b]) => a.localeCompare(b));
+  const selectedKey = dateKey(year, month, Math.min(selectedDay, total));
+  const selectedEvents = (eventsByDate[selectedKey] ?? []).slice().sort((a, b) => (a.time ?? "").localeCompare(b.time ?? ""));
 
   return (
     <main style={{ display: "flex", flexDirection: "column" }}>
@@ -146,7 +142,7 @@ export default function CalendarPage() {
           borderBottom: "1px solid #f0f1f3",
         }}
       >
-        <h1 style={{ fontSize: "17px", fontWeight: 800, color: "#111827" }}>캘린더</h1>
+        <h1 style={{ fontSize: "22px", fontWeight: 800, color: "#111827" }}>{month}월</h1>
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           <button onClick={() => goToMonth(-1)} style={navBtnStyle} aria-label="이전 달">
             ‹
@@ -160,32 +156,10 @@ export default function CalendarPage() {
         </div>
       </header>
 
-      {summaryBanner && (
-        <div
-          style={{
-            margin: "14px 20px 0",
-            padding: "10px 14px",
-            borderRadius: "10px",
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-            fontSize: "12.5px",
-            fontWeight: 700,
-            background: summaryBanner.tone === "today" ? "#eff6ff" : "#fef2f2",
-            color: summaryBanner.tone === "today" ? "#1d4ed8" : "#b91c1c",
-          }}
-        >
-          <span>{summaryBanner.tone === "today" ? "📌" : "⏰"}</span>
-          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {summaryBanner.text}
-          </span>
-        </div>
-      )}
-
-      <div style={{ padding: "16px 20px" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "4px" }}>
-          {["일", "월", "화", "수", "목", "금", "토"].map((d) => (
-            <div key={d} style={{ textAlign: "center", fontSize: "11.5px", fontWeight: 700, color: "#9ca3af" }}>
+      <div style={{ padding: "16px 20px 8px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "3px" }}>
+          {WEEKDAY_LABELS.map((d) => (
+            <div key={d} style={{ textAlign: "center", fontSize: "11px", fontWeight: 700, color: "#9ca3af", paddingBottom: "6px" }}>
               {d}
             </div>
           ))}
@@ -195,98 +169,166 @@ export default function CalendarPage() {
             const key = dateKey(year, month, day);
             const dayEvents = eventsByDate[key] ?? [];
             const isToday = key === TODAY;
+            const isSelected = day === Math.min(selectedDay, total);
+
             return (
-              <div
+              <button
                 key={key}
+                onClick={() => setSelectedDay(day)}
                 style={{
-                  aspectRatio: "1 / 1",
+                  boxSizing: "border-box",
+                  width: "100%",
+                  minWidth: 0,
+                  aspectRatio: "3 / 4",
                   display: "flex",
                   flexDirection: "column",
                   alignItems: "center",
-                  justifyContent: "center",
-                  gap: "3px",
+                  gap: "2px",
+                  padding: "3px 1px",
+                  margin: 0,
+                  border: "none",
+                  borderRadius: "10px",
+                  background: isSelected ? "#111827" : "transparent",
+                  font: "inherit",
+                  WebkitAppearance: "none",
+                  cursor: "pointer",
                 }}
               >
                 <span
                   style={{
-                    width: "26px",
-                    height: "26px",
+                    width: "20px",
+                    height: "20px",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
                     borderRadius: "999px",
-                    fontSize: "12.5px",
-                    fontWeight: isToday ? 800 : 500,
-                    color: isToday ? "#ffffff" : "#374151",
-                    background: isToday ? "#2563eb" : "transparent",
+                    fontSize: "12px",
+                    fontWeight: isToday || isSelected ? 800 : 500,
+                    color: isSelected ? "#ffffff" : isToday ? "#2563eb" : "#374151",
                   }}
                 >
                   {day}
                 </span>
-                <div style={{ display: "flex", gap: "2px", height: "5px" }}>
-                  {dayEvents.slice(0, 3).map((e) => (
-                    <span
-                      key={e.id}
-                      style={{
-                        width: "5px",
-                        height: "5px",
-                        borderRadius: "999px",
-                        background: e.type === "deadline" ? "#ef4444" : "#22c55e",
-                      }}
-                    />
-                  ))}
+                <div style={{ boxSizing: "border-box", display: "flex", flexDirection: "column", gap: "2px", width: "100%", minWidth: 0 }}>
+                  {dayEvents.slice(0, 2).map((e) => {
+                    const colors = colorFor(e.noticeId);
+                    return (
+                      <span
+                        key={e.id}
+                        style={{
+                          boxSizing: "border-box",
+                          display: "block",
+                          fontSize: "8.5px",
+                          fontWeight: 700,
+                          lineHeight: 1.2,
+                          padding: "1px 2px",
+                          borderRadius: "4px",
+                          background: isSelected ? "rgba(255,255,255,0.16)" : colors.bg,
+                          color: isSelected ? "#ffffff" : colors.text,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          width: "100%",
+                          minWidth: 0,
+                          textAlign: "center",
+                        }}
+                      >
+                        {e.label}
+                      </span>
+                    );
+                  })}
                 </div>
-              </div>
+              </button>
             );
           })}
         </div>
       </div>
 
-      <div style={{ padding: "4px 20px 24px", display: "flex", flexDirection: "column", gap: "16px" }}>
-        {agenda.length === 0 && (
-          <p style={{ fontSize: "13px", color: "#9ca3af", textAlign: "center", marginTop: "20px" }}>
-            이 달에는 등록된 일정이 없어요.
+      <div style={{ padding: "12px 20px 24px", display: "flex", flexDirection: "column", gap: "12px" }}>
+        <p style={{ fontSize: "16px", fontWeight: 800, color: "#111827" }}>
+          {year}년 {month}월 {Math.min(selectedDay, total)}일 ({weekdayOf(selectedKey)})
+        </p>
+
+        {selectedEvents.length === 0 ? (
+          <p style={{ fontSize: "13px", color: "#9ca3af", padding: "20px 0", textAlign: "center" }}>
+            이 날은 등록된 일정이 없어요.
           </p>
-        )}
-        {agenda.map(([date, dayEvents]) => (
-          <div key={date}>
-            <p style={{ fontSize: "12.5px", fontWeight: 700, color: "#6b7280", marginBottom: "8px" }}>
-              {formatMonthDayKorean(date)}
-            </p>
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-              {dayEvents.map((e) => (
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            {selectedEvents.map((e) => {
+              const colors = colorFor(e.noticeId);
+              return (
                 <Link
                   key={e.id}
                   href={`/notices/${e.noticeId}`}
                   style={{
                     display: "flex",
                     alignItems: "center",
-                    gap: "10px",
+                    gap: "12px",
                     padding: "12px 14px",
                     background: "#ffffff",
                     border: "1px solid #e5e7eb",
+                    borderLeft: `4px solid ${colors.text}`,
                     borderRadius: "10px",
                     textDecoration: "none",
                   }}
                 >
-                  <span
-                    style={{
-                      width: "8px",
-                      height: "8px",
-                      borderRadius: "999px",
-                      background: e.type === "deadline" ? "#ef4444" : "#22c55e",
-                      flexShrink: 0,
-                    }}
-                  />
-                  <div style={{ flex: 1 }}>
-                    <p style={{ fontSize: "13.5px", fontWeight: 700, color: "#111827" }}>{e.title}</p>
-                    <p style={{ fontSize: "12px", color: "#9ca3af", marginTop: "2px" }}>{e.time ?? ""}</p>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <span
+                      style={{
+                        display: "inline-block",
+                        fontSize: "10.5px",
+                        fontWeight: 700,
+                        color: colors.text,
+                        background: colors.bg,
+                        padding: "1px 7px",
+                        borderRadius: "999px",
+                        marginBottom: "4px",
+                      }}
+                    >
+                      {e.label}
+                    </span>
+                    <p
+                      style={{
+                        fontSize: "13.5px",
+                        fontWeight: 700,
+                        color: "#111827",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {e.title}
+                    </p>
                   </div>
+                  {e.time && (
+                    <span style={{ fontSize: "12px", fontWeight: 700, color: "#6b7280", flexShrink: 0 }}>{e.time}</span>
+                  )}
                 </Link>
-              ))}
-            </div>
+              );
+            })}
           </div>
-        ))}
+        )}
+
+        <Link
+          href="/notices"
+          style={{
+            marginTop: "4px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "6px",
+            padding: "13px",
+            borderRadius: "12px",
+            border: "1px dashed #d1d5db",
+            color: "#374151",
+            fontSize: "13.5px",
+            fontWeight: 700,
+            textDecoration: "none",
+          }}
+        >
+          + 새로운 이벤트
+        </Link>
       </div>
     </main>
   );

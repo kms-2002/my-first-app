@@ -11,7 +11,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return <>{children}</>;
   }
 
-  const hideNav = pathname.startsWith("/onboarding");
+  const hideNav = pathname === "/" || pathname.startsWith("/onboarding") || pathname === "/login";
 
   return (
     <div
