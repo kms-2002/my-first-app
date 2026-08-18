@@ -6,7 +6,10 @@ const RULES: { category: Category; pattern: RegExp }[] = [
   { category: "장학", pattern: /장학/ },
   { category: "취업", pattern: /취업|채용|인턴|잡페어/ },
   { category: "공모전", pattern: /공모전|경진대회|아이디어\s*공모/ },
-  { category: "대외활동", pattern: /서포터즈|기자단|대외활동|봉사단/ },
+  {
+    category: "대외활동",
+    pattern: /서포터즈|기자단|대외활동|봉사단|체험단|홍보대사|원정대|축제|페스티벌|문화제|참가(?:자|팀)\s*모집/,
+  },
 ];
 
 export function guessCategory(title: string): Category {

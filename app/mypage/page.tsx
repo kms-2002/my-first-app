@@ -8,16 +8,21 @@ import {
   getEvents,
   getNotificationSettings,
   getProfile,
+  removeEvent,
   saveNotificationSettings,
 } from "../lib/storage";
-import { CATEGORY_COLORS, daysUntil } from "../lib/date";
+import { useNotices } from "../lib/useNotices";
+import { CATEGORY_COLORS, daysUntil, formatMonthDayKorean } from "../lib/date";
 import type { CalendarEvent, NotificationSettings, UserProfile } from "../lib/types";
+
+const ACTIVITY_CATEGORIES = ["공모전", "대외활동"] as const;
 
 export default function MyPage() {
   const router = useRouter();
   const [profile, setProfile] = useState<UserProfile | null | undefined>(undefined);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [notifications, setNotifications] = useState<NotificationSettings>({ deadlineAlerts: true });
+  const { notices } = useNotices();
 
   useEffect(() => {
     const p = getProfile();
@@ -35,6 +40,17 @@ export default function MyPage() {
     [events],
   );
 
+  // 캘린더에 등록한 일정 중 공모전·대외활동 카테고리는 자동으로 "참여 기록"에 남긴다.
+  const activityRecords = useMemo(() => {
+    return events
+      .map((e) => ({ event: e, category: notices.find((n) => n.id === e.noticeId)?.category }))
+      .filter(
+        (r): r is { event: CalendarEvent; category: (typeof ACTIVITY_CATEGORIES)[number] } =>
+          r.category === "공모전" || r.category === "대외활동",
+      )
+      .sort((a, b) => b.event.date.localeCompare(a.event.date));
+  }, [events, notices]);
+
   function toggleDeadlineAlerts() {
     const next = { ...notifications, deadlineAlerts: !notifications.deadlineAlerts };
     setNotifications(next);
@@ -44,6 +60,11 @@ export default function MyPage() {
   function handleLogout() {
     clearProfile();
     router.push("/");
+  }
+
+  function handleRemoveActivity(eventId: string) {
+    removeEvent(eventId);
+    setEvents(getEvents());
   }
 
   if (profile === undefined) {
@@ -130,6 +151,105 @@ export default function MyPage() {
               <p style={{ fontSize: "11.5px", color: "#9ca3af", marginTop: "4px" }}>{stat.label}</p>
             </div>
           ))}
+        </section>
+
+        <section>
+          <p style={{ fontSize: "12px", fontWeight: 700, color: "#9ca3af", marginBottom: "10px" }}>
+            나의 활동 기록
+          </p>
+          {activityRecords.length === 0 ? (
+            <div
+              style={{
+                padding: "20px",
+                textAlign: "center",
+                background: "#ffffff",
+                border: "1px dashed #e5e7eb",
+                borderRadius: "12px",
+                color: "#9ca3af",
+                fontSize: "12.5px",
+                lineHeight: 1.6,
+              }}
+            >
+              아직 기록된 활동이 없어요.
+              <br />
+              공모전·대외활동 일정을 캘린더에 등록하면 여기에 자동으로 기록돼요.
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {activityRecords.map(({ event, category }) => {
+                const colors = CATEGORY_COLORS[category];
+                const upcoming = daysUntil(event.date) >= 0;
+                return (
+                  <div
+                    key={event.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px",
+                      padding: "12px 14px",
+                      background: "#ffffff",
+                      border: "1px solid #e5e7eb",
+                      borderRadius: "12px",
+                    }}
+                  >
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <span
+                          style={{
+                            fontSize: "10.5px",
+                            fontWeight: 700,
+                            color: colors.text,
+                            background: colors.bg,
+                            padding: "2px 8px",
+                            borderRadius: "999px",
+                          }}
+                        >
+                          {category}
+                        </span>
+                        <span style={{ fontSize: "10.5px", fontWeight: 700, color: upcoming ? "#2563eb" : "#9ca3af" }}>
+                          {upcoming ? "참여 예정" : "참여 완료"}
+                        </span>
+                      </div>
+                      <p
+                        style={{
+                          fontSize: "13.5px",
+                          fontWeight: 700,
+                          color: "#111827",
+                          marginTop: "6px",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {event.title}
+                      </p>
+                      <p style={{ fontSize: "12px", color: "#9ca3af", marginTop: "3px" }}>
+                        {formatMonthDayKorean(event.date)}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleRemoveActivity(event.id)}
+                      aria-label="활동 기록 삭제"
+                      title="참여하지 않았어요"
+                      style={{
+                        width: "28px",
+                        height: "28px",
+                        borderRadius: "999px",
+                        border: "none",
+                        background: "#f3f4f6",
+                        color: "#9ca3af",
+                        fontSize: "14px",
+                        cursor: "pointer",
+                        flexShrink: 0,
+                      }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </section>
 
         <section>
