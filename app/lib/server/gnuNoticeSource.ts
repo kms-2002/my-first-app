@@ -23,7 +23,11 @@ const BOARDS: BoardConfig[] = [
 // 게시판 하나당 한 번 새로고침할 때 상세 페이지를 가져올 최대 건수. 이미 캐시에 있는 공지는 세지 않는다.
 // Vercel 서버리스 함수 제한 시간(app/api/notices/route.ts의 maxDuration) 안에 완전 콜드 스크래핑이
 // 끝나도록 값을 보수적으로 잡았다.
-export const MAX_DETAIL_FETCHES_PER_BOARD = 12;
+export const MAX_DETAIL_FETCHES_PER_BOARD = 8;
+
+// 상세 페이지를 한 번에 몇 건씩 동시에 가져올지. 완전 순차 요청은 (요청 수 × 지연시간)만큼
+// 누적되어 콜드 스크래핑 시 Vercel 함수 제한 시간을 넘기기 쉬우므로, 배치 단위로만 예의상 지연을 둔다.
+const DETAIL_FETCH_CONCURRENCY = 3;
 
 function listUrl(board: BoardConfig): string {
   return `${BASE_URL}/main/na/ntt/selectNttList.do?mi=${board.mi}&bbsId=${board.bbsId}`;
@@ -80,43 +84,47 @@ async function fetchNoticeDetail(board: BoardConfig, nttSn: string): Promise<str
 }
 
 // 게시판 하나를 스캔해서, 아직 캐시(knownIds)에 없는 공지의 본문만 새로 긁는다.
-// 이미 본 공지의 상세 페이지를 매번 다시 요청하지 않는 게 학교 서버 부하를 줄이는 핵심이다.
+// 상세 페이지는 DETAIL_FETCH_CONCURRENCY건씩 묶어 동시에 요청하고, 배치 사이에만 예의상 지연을 둔다
+// (건마다 순차 대기하면 콜드 스크래핑 시 Vercel 함수 제한 시간을 넘기기 쉽다).
 async function scrapeBoard(board: BoardConfig, knownIds: Set<string>): Promise<Notice[]> {
   const rows = await fetchNoticeList(board);
+  const targets = rows
+    .filter((row) => !knownIds.has(`gnu-${row.nttSn}`))
+    .slice(0, MAX_DETAIL_FETCHES_PER_BOARD);
+
   const notices: Notice[] = [];
-  let detailFetchCount = 0;
-
-  for (const row of rows) {
-    const id = `gnu-${row.nttSn}`;
-    if (knownIds.has(id)) continue;
-    if (detailFetchCount >= MAX_DETAIL_FETCHES_PER_BOARD) break;
-
-    if (detailFetchCount > 0) await sleep(REQUEST_DELAY_MS);
-    const rawText = await fetchNoticeDetail(board, row.nttSn);
-    detailFetchCount += 1;
-
-    notices.push({
-      id,
-      title: row.title,
-      category: board.fixedCategory ?? guessCategory(row.title),
-      department: row.department,
-      sourceUrl: detailUrl(board, row.nttSn),
-      publishedDate: row.publishedDate,
-      rawText,
-    });
+  for (let i = 0; i < targets.length; i += DETAIL_FETCH_CONCURRENCY) {
+    if (i > 0) await sleep(REQUEST_DELAY_MS);
+    const batch = targets.slice(i, i + DETAIL_FETCH_CONCURRENCY);
+    const batchResults = await Promise.allSettled(
+      batch.map(async (row) => ({
+        id: `gnu-${row.nttSn}`,
+        title: row.title,
+        category: board.fixedCategory ?? guessCategory(row.title),
+        department: row.department,
+        sourceUrl: detailUrl(board, row.nttSn),
+        publishedDate: row.publishedDate,
+        rawText: await fetchNoticeDetail(board, row.nttSn),
+      })),
+    );
+    for (const result of batchResults) {
+      if (result.status === "fulfilled") {
+        notices.push(result.value);
+      } else {
+        // 재시도까지 실패한 개별 상세페이지 하나 때문에 전체 스크래핑을 실패시키지 않고 건너뛴다.
+        console.error("상세페이지 스크래핑 실패, 건너뜀:", result.reason);
+      }
+    }
   }
 
   return notices;
 }
 
 export async function scrapeRecentNotices(knownIds: Set<string>): Promise<Notice[]> {
-  const results: Notice[] = [];
-
-  for (let i = 0; i < BOARDS.length; i++) {
-    if (i > 0) await sleep(REQUEST_DELAY_MS);
-    const notices = await scrapeBoard(BOARDS[i], knownIds);
-    results.push(...notices);
-  }
-
-  return results;
+  const results = await Promise.allSettled(BOARDS.map((board) => scrapeBoard(board, knownIds)));
+  return results.flatMap((result) => {
+    if (result.status === "fulfilled") return result.value;
+    console.error("게시판 스크래핑 실패, 건너뜀:", result.reason);
+    return [];
+  });
 }

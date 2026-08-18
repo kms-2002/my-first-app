@@ -17,14 +17,27 @@ export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+const MAX_ATTEMPTS = 3;
+
+// 학교 서버가 동시 연결이 몰리면 이따금 응답 도중 소켓을 끊어버려서(SocketError), 스크래핑
+// 전체가 실패하지 않도록 짧게 재시도한다.
 export async function politeFetch(url: string): Promise<string> {
   if (KNOWN_DISALLOWED_QUERIES.some((query) => url.includes(query))) {
     throw new Error(`robots.txt에서 차단된 경로라 요청할 수 없습니다: ${url}`);
   }
 
-  const res = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
-  if (!res.ok) {
-    throw new Error(`요청 실패 (${res.status}): ${url}`);
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
+      if (!res.ok) {
+        throw new Error(`요청 실패 (${res.status}): ${url}`);
+      }
+      return await res.text();
+    } catch (error) {
+      lastError = error;
+      if (attempt < MAX_ATTEMPTS) await sleep(REQUEST_DELAY_MS * attempt);
+    }
   }
-  return res.text();
+  throw lastError;
 }
