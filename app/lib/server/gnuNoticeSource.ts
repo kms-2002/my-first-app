@@ -23,16 +23,19 @@ const BOARDS: BoardConfig[] = [
 ];
 
 // 게시판 하나당 한 번 새로고침할 때 상세 페이지를 가져올 최대 건수. 이미 캐시에 있는 공지는 세지 않는다.
-// Vercel 서버리스 함수 제한 시간(app/api/notices/route.ts의 maxDuration) 안에 완전 콜드 스크래핑이
-// 끝나도록 값을 보수적으로 잡았다.
-export const MAX_DETAIL_FETCHES_PER_BOARD = 8;
+// 게시판별로 하루에도 여러 건씩 올라오고 공모전/대외활동처럼 드문 카테고리는 최근 글 목록 앞쪽에
+// 안 나올 수 있어, 목록을 여러 페이지 훑어서 후보를 넉넉히 확보한 뒤 이만큼 상세 조회한다.
+export const MAX_DETAIL_FETCHES_PER_BOARD = 30;
+
+// 게시판 하나당 훑을 목록 페이지 수. 페이지당 10~11건이라 3페이지면 최근 30여 건까지 후보로 본다.
+const LIST_PAGES_PER_BOARD = 3;
 
 // 상세 페이지를 한 번에 몇 건씩 동시에 가져올지. 완전 순차 요청은 (요청 수 × 지연시간)만큼
 // 누적되어 콜드 스크래핑 시 Vercel 함수 제한 시간을 넘기기 쉬우므로, 배치 단위로만 예의상 지연을 둔다.
 const DETAIL_FETCH_CONCURRENCY = 3;
 
-function listUrl(board: BoardConfig): string {
-  return `${BASE_URL}/main/na/ntt/selectNttList.do?mi=${board.mi}&bbsId=${board.bbsId}`;
+function listUrl(board: BoardConfig, page: number): string {
+  return `${BASE_URL}/main/na/ntt/selectNttList.do?mi=${board.mi}&bbsId=${board.bbsId}&currPage=${page}`;
 }
 
 function detailUrl(board: BoardConfig, nttSn: string): string {
@@ -51,13 +54,19 @@ interface ListRow {
   publishedDate: string;
 }
 
-async function fetchNoticeList(board: BoardConfig): Promise<ListRow[]> {
-  const html = await politeFetch(listUrl(board));
+// 게시판마다 컬럼 순서/개수가 다르다 (예: 외부기관 게시판은 부서가 제목보다 앞에 오고 끝에 조회수 칸이
+// 하나 더 붙는다). "마지막 td = 날짜", "제목 다음 BD_tm_none = 부서" 같은 위치 가정은 게시판마다 깨지므로,
+// 값의 생김새(날짜 형식, 순수 숫자 여부)로 찾는다.
+const DATE_CELL_PATTERN = /^\d{4}\.\s*\d{1,2}\.\s*\d{1,2}\.?$/;
+
+async function fetchNoticeListPage(board: BoardConfig, page: number): Promise<ListRow[]> {
+  const html = await politeFetch(listUrl(board, page));
   const $ = cheerio.load(html);
   const rows: ListRow[] = [];
 
   $("table tbody tr").each((_, el) => {
-    const titleCell = $(el).find("td.ta_l");
+    const row = $(el);
+    const titleCell = row.find("td.ta_l");
     const link = titleCell.find("a.nttInfoBtn[data-id]");
     const nttSn = link.attr("data-id");
     if (!nttSn) return;
@@ -65,14 +74,39 @@ async function fetchNoticeList(board: BoardConfig): Promise<ListRow[]> {
     // "새로운 글" 배지가 스크린리더 전용 텍스트(.sr-only)로 제목 안에 섞여 들어오므로 제거하고 추출한다.
     titleCell.find(".sr-only").remove();
 
+    const allCellText = row
+      .find("td")
+      .toArray()
+      .map((td) => $(td).text().replace(/\s+/g, " ").trim());
+    const dateText = allCellText.find((text) => DATE_CELL_PATTERN.test(text)) ?? "";
+
+    // 부서 칸(BD_tm_none) 중 "공지" 배지나 순번·조회수 같은 순수 숫자는 부서명이 아니므로 제외한다.
+    const bdCellText = row
+      .find("td.BD_tm_none")
+      .toArray()
+      .map((td) => $(td).text().replace(/\s+/g, " ").trim());
+    const department = bdCellText.find((text) => text && text !== "공지" && !/^\d+$/.test(text)) ?? "";
+
     rows.push({
       nttSn,
       title: link.text().replace(/\s+/g, " ").trim(),
-      department: titleCell.nextAll("td.BD_tm_none").first().text().trim(),
-      publishedDate: toIsoDate($(el).find("td").last().text()),
+      department,
+      publishedDate: toIsoDate(dateText),
     });
   });
 
+  return rows;
+}
+
+// 목록 페이지를 LIST_PAGES_PER_BOARD장까지 순차로 훑는다 (페이지 사이엔 예의상 지연을 둔다).
+async function fetchNoticeList(board: BoardConfig): Promise<ListRow[]> {
+  const rows: ListRow[] = [];
+  for (let page = 1; page <= LIST_PAGES_PER_BOARD; page++) {
+    if (page > 1) await sleep(REQUEST_DELAY_MS);
+    const pageRows = await fetchNoticeListPage(board, page);
+    if (pageRows.length === 0) break; // 게시글이 적어 그 페이지가 마지막인 경우
+    rows.push(...pageRows);
+  }
   return rows;
 }
 

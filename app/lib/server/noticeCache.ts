@@ -12,7 +12,7 @@ const CACHE_DIR = path.join(os.tmpdir(), "gnu-notice-calendar");
 const CACHE_FILE = path.join(CACHE_DIR, "notices-cache.json");
 
 export const CACHE_TTL_MS = 30 * 60 * 1000; // 30분
-const MAX_STORED_NOTICES = 90; // 게시판 3곳(학사/장학/교내채용) 최근 글을 함께 보관
+const MAX_STORED_NOTICES = 250; // 게시판 5곳(학사/장학/교내채용/외부기관/교내기관) 최근 글을 함께 보관
 
 interface NoticeCache {
   fetchedAt: string; // ISO datetime
