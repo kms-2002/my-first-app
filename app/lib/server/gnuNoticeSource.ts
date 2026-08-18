@@ -13,13 +13,17 @@ interface BoardConfig {
   // 게시판 자체가 카테고리를 보장하면 지정한다 (예: 장학 게시판의 글은 전부 "장학").
   // 지정하지 않으면 제목 키워드로 최선-추정한다 (학사 공지처럼 내용이 섞인 게시판용).
   fixedCategory?: Category;
+  // 제목 키워드로는 매칭돼도 이 게시판에서는 채택하지 않을 카테고리.
+  // 예: 외부기관 게시판은 지자체·타 기관 주최 공모전/행사가 많아, 공모전·대외활동은
+  // 교내(학사/교내기관 게시판)에서 올라온 것만 인정하고 여기서는 제외한다.
+  excludeCategories?: Category[];
 }
 
 const BOARDS: BoardConfig[] = [
   { mi: "1127", bbsId: "1029" }, // 학사<공지사항<대학소식 (혼합 내용)
   { mi: "1376", bbsId: "1075", fixedCategory: "장학" }, // 장학<공지사항<대학소식
   { mi: "1129", bbsId: "1030", fixedCategory: "취업" }, // 교내채용<공지사항<대학소식
-  { mi: "1132", bbsId: "1033" }, // 외부기관<공지사항<대학소식 (공모전·대외활동 공고가 주로 올라오는 게시판, 혼합 내용)
+  { mi: "1132", bbsId: "1033", excludeCategories: ["공모전", "대외활동"] }, // 외부기관<공지사항<대학소식 (지자체·타 기관 주최 행사 위주라 공모전/대외활동은 교내 게시판 것만 인정)
   { mi: "1126", bbsId: "1028" }, // 교내기관<공지사항<대학소식 (교내 서포터즈·창업 경진대회·비교과 프로그램 등이 올라오는 게시판, 혼합 내용)
 ];
 
@@ -131,6 +135,7 @@ async function scrapeBoard(board: BoardConfig, knownIds: Set<string>): Promise<N
     .filter((row) => !knownIds.has(`gnu-${row.nttSn}`))
     .map((row) => ({ row, category: board.fixedCategory ?? guessCategory(row.title) }))
     .filter((t): t is { row: ListRow; category: Category } => t.category !== null)
+    .filter((t) => !board.excludeCategories?.includes(t.category))
     .slice(0, MAX_DETAIL_FETCHES_PER_BOARD);
 
   const notices: Notice[] = [];
