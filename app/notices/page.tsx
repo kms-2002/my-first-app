@@ -20,6 +20,14 @@ function earliestItem(extracted: ExtractedInfo) {
   return [...extracted.scheduleItems].sort((a, b) => a.date.localeCompare(b.date))[0];
 }
 
+// 정렬·D-day 표시는 "신청 마감"을 기준으로 한다. 마감(deadline) 항목이 없는 공지는
+// 판단할 다른 일정이라도 있으면 그걸로 대신한다 (발표일 등).
+function earliestDeadline(extracted: ExtractedInfo) {
+  const deadlines = extracted.scheduleItems.filter((item) => item.type === "deadline");
+  if (deadlines.length > 0) return [...deadlines].sort((a, b) => a.date.localeCompare(b.date))[0];
+  return earliestItem(extracted);
+}
+
 // 일정 정보를 못 찾은 공지(hasSchedule=false)는 마감 여부를 판단할 수 없으니 계속 노출한다.
 // 일정이 있는 공지는, 그중 가장 늦은 날짜(마감/발표/행사 등)까지도 이미 지났으면 신청 불가로 보고 숨긴다.
 function isExpired(extracted: ExtractedInfo | undefined): boolean {
@@ -72,12 +80,14 @@ export default function NoticesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [displayedNotices]);
 
+  // 마감이 가까운(=날짜가 이른) 공지가 위로 오도록 오름차순 정렬한다 — 자연히 마감 7일 이내인
+  // 공지들이 최상단에 모이고, 그 뒤로는 마감일이 늦은 순서대로 이어진다.
   const sortedNotices = useMemo(() => {
     return displayedNotices
       .filter((n) => !isExpired(analysis[n.id]?.extracted))
       .sort((a, b) => {
-        const ea = analysis[a.id]?.extracted ? earliestItem(analysis[a.id].extracted!) : null;
-        const eb = analysis[b.id]?.extracted ? earliestItem(analysis[b.id].extracted!) : null;
+        const ea = analysis[a.id]?.extracted ? earliestDeadline(analysis[a.id].extracted!) : null;
+        const eb = analysis[b.id]?.extracted ? earliestDeadline(analysis[b.id].extracted!) : null;
         if (ea && eb) return ea.date.localeCompare(eb.date);
         if (ea) return -1;
         if (eb) return 1;
@@ -151,7 +161,7 @@ export default function NoticesPage() {
           const state = analysis[notice.id];
           const colors = CATEGORY_COLORS[notice.category];
           const reason = matchReason(notice, profile);
-          const first = state?.extracted ? earliestItem(state.extracted) : null;
+          const first = state?.extracted ? earliestDeadline(state.extracted) : null;
 
           return (
             <Link
