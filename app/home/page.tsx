@@ -6,6 +6,7 @@ import Link from "next/link";
 import { getEvents, getProfile } from "../lib/storage";
 import { useNotices } from "../lib/useNotices";
 import { isRelevant, matchReason } from "../lib/relevance";
+import { extractScheduleFromText } from "../lib/scheduleExtractor";
 import { CATEGORY_COLORS, TODAY, dDayLabel, daysUntil } from "../lib/date";
 import type { CalendarEvent, Category, UserProfile } from "../lib/types";
 
@@ -73,6 +74,13 @@ export default function Home() {
     if (!profile) return [];
     return notices
       .filter((n) => isRelevant(n, profile))
+      .filter((n) => {
+        // 신청 마감 등 일정이 이미 다 지난 공지는 추천에서 제외한다 (일정 정보가 없으면 판단 불가하니 유지).
+        const extracted = extractScheduleFromText(n.title, n.rawText);
+        if (!extracted.hasSchedule || extracted.scheduleItems.length === 0) return true;
+        const latestDate = extracted.scheduleItems.reduce((max, item) => (item.date > max ? item.date : max), "");
+        return latestDate >= TODAY;
+      })
       .sort((a, b) => b.publishedDate.localeCompare(a.publishedDate))
       .slice(0, 2);
   }, [profile, notices]);

@@ -7,7 +7,7 @@ import { getProfile } from "../lib/storage";
 import { isRelevant, matchReason } from "../lib/relevance";
 import { analyzeNotice, getCachedAnalysis } from "../lib/analysisCache";
 import { useNotices } from "../lib/useNotices";
-import { CATEGORY_COLORS, dDayLabel, formatFullDateKorean } from "../lib/date";
+import { CATEGORY_COLORS, TODAY, dDayLabel, formatFullDateKorean } from "../lib/date";
 import type { Category, ExtractedInfo, Notice, UserProfile } from "../lib/types";
 
 type AnalysisState = { extracted?: ExtractedInfo; loading: boolean; error?: string };
@@ -18,6 +18,14 @@ const CATEGORIES: Category[] = ["장학", "취업", "비교과", "공모전", "�
 function earliestItem(extracted: ExtractedInfo) {
   if (extracted.scheduleItems.length === 0) return null;
   return [...extracted.scheduleItems].sort((a, b) => a.date.localeCompare(b.date))[0];
+}
+
+// 일정 정보를 못 찾은 공지(hasSchedule=false)는 마감 여부를 판단할 수 없으니 계속 노출한다.
+// 일정이 있는 공지는, 그중 가장 늦은 날짜(마감/발표/행사 등)까지도 이미 지났으면 신청 불가로 보고 숨긴다.
+function isExpired(extracted: ExtractedInfo | undefined): boolean {
+  if (!extracted || !extracted.hasSchedule || extracted.scheduleItems.length === 0) return false;
+  const latestDate = extracted.scheduleItems.reduce((max, item) => (item.date > max ? item.date : max), "");
+  return latestDate < TODAY;
 }
 
 export default function NoticesPage() {
@@ -65,14 +73,16 @@ export default function NoticesPage() {
   }, [displayedNotices]);
 
   const sortedNotices = useMemo(() => {
-    return [...displayedNotices].sort((a, b) => {
-      const ea = analysis[a.id]?.extracted ? earliestItem(analysis[a.id].extracted!) : null;
-      const eb = analysis[b.id]?.extracted ? earliestItem(analysis[b.id].extracted!) : null;
-      if (ea && eb) return ea.date.localeCompare(eb.date);
-      if (ea) return -1;
-      if (eb) return 1;
-      return 0;
-    });
+    return displayedNotices
+      .filter((n) => !isExpired(analysis[n.id]?.extracted))
+      .sort((a, b) => {
+        const ea = analysis[a.id]?.extracted ? earliestItem(analysis[a.id].extracted!) : null;
+        const eb = analysis[b.id]?.extracted ? earliestItem(analysis[b.id].extracted!) : null;
+        if (ea && eb) return ea.date.localeCompare(eb.date);
+        if (ea) return -1;
+        if (eb) return 1;
+        return 0;
+      });
   }, [displayedNotices, analysis]);
 
   if (profile === undefined || noticesLoading) {
